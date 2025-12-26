@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+    <head>
+        <meta charset="UTF-8" />
+        <title>Yemek İsimlik</title>
+
+        <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+
+        <style>
+            :root {
+                --icon-size: 50px;
+                --lang-font-size: 18px;
+                --lang-line-height: 1.4;
+                --label-width: 23px;
+            }
+
+            /* ===== KART ===== */
+            .card {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                box-sizing: border-box;
+            }
+
+            /* Dil satırları alanı: footer hariç kalan yüksekliği doldurur */
+            .lang-area {
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+
+            /* Her dil satırı: etiket + metin yan yana, table gibi davranır */
+            .lang-row {
+                display: flex;
+                align-items: center;
+                min-height: 0;
+                flex: 1 1 auto;
+            }
+
+            /* Dil etiketi: sabit kare kutucuk, dikeyde ortalı */
+            .lang-label {
+                width: var(--label-width);
+                height: var(--label-width);
+                min-width: var(--label-width);
+                min-height: var(--label-width);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                font-weight: bold;
+                color: #fff;
+                flex-shrink: 0;
+            }
+
+            /* Metin kutusu: kalan genişliği doldurur, alt satıra inebilir */
+            .lang-content {
+                flex: 1 1 auto;
+                min-width: 0;
+                display: flex;
+                align-items: center;
+                padding-left: 8px;
+            }
+
+            /* Ayırıcı çizgi: sadece metin kutusunun altında */
+            .lang-content.with-border {
+                border-bottom: 1px solid #000;
+            }
+
+            .lang-text {
+                font-size: var(--lang-font-size);
+                line-height: var(--lang-line-height);
+                word-break: break-word;
+                overflow-wrap: anywhere;
+                hyphens: auto;
+            }
+
+            /* ===== FOOTER: Alerjen + Logo ===== */
+            .card-footer {
+                height: var(--icon-size);
+                min-height: var(--icon-size);
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: 4px;
+            }
+
+            .allergen {
+                width: var(--icon-size);
+                height: var(--icon-size);
+                object-fit: contain;
+            }
+
+            .logo {
+                width: var(--icon-size);
+                height: var(--icon-size);
+                object-fit: contain;
+            }
+
+            /* ===== YAZDIRMA ===== */
+            @media print {
+                body {
+                    margin: 0;
+                }
+
+                .page {
+                    page-break-after: always;
+                }
+
+                .no-print {
+                    display: none;
+                }
+            }
+        </style>
+    </head>
+
+    <body class="bg-gray-200 p-4">
+
+        <!-- ================= CONTROLS ================= -->
+        <div class="no-print bg-white p-4 mb-4 rounded shadow">
+            <div class="flex items-center gap-4 mb-3">
+                <input type="file" accept=".xlsx" onchange="loadExcel(event)" class="border p-2">
+                <span id="status" class="text-sm text-gray-600">Excel yüklenmedi</span>
+            </div>
+
+            <!-- Dil renk seçimi -->
+            <div class="mb-3">
+                <div class="text-sm font-semibold mb-2">Dil renkleri (karttaki yazı rengi ve dil etiketi arka planı):
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-10 text-sm font-bold">TR</span>
+                        <input type="color" id="colorTR" value="#0000ff" class="w-10 h-8 p-0 border">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-10 text-sm font-bold">EN</span>
+                        <input type="color" id="colorEN" value="#00aa00" class="w-10 h-8 p-0 border">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-10 text-sm font-bold">DE</span>
+                        <input type="color" id="colorDE" value="#cc0000" class="w-10 h-8 p-0 border">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-10 text-sm font-bold">RU</span>
+                        <input type="color" id="colorRU" value="#ff9900" class="w-10 h-8 p-0 border">
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="applyColors()" class="px-3 py-1 bg-blue-600 text-white text-sm rounded">Renkleri
+                        uygula</button>
+                    <button onclick="resetAllColors()" class="px-3 py-1 bg-gray-600 text-white text-sm rounded">Tüm
+                        renkleri sıfırla</button>
+                </div>
+                <div class="text-xs text-gray-500 mt-2">
+                    Örnek: TR mavi seçilirse karttaki Türkçe yazılar mavi olur. TR etiketi arka planı mavi, yazı beyaz
+                    kalır.
+                </div>
+            </div>
+
+            <div class="flex gap-2 mb-3">
+                <input id="idInput" type="text" placeholder="ID gir" class="border p-2 w-48">
+                <button onclick="addId()" class="bg-black text-white px-4">Ekle</button>
+            </div>
+
+            <div id="idList" class="flex flex-wrap gap-2 mb-3"></div>
+
+            <button onclick="generateOutput()" class="bg-black text-white px-6 py-2">Çıktı Oluştur</button>
+        </div>
+
+        <!-- ================= OUTPUT ================= -->
+        <div id="output"></div>
+
+        <script>
+            let DATA = [];
+            let selectedIds = [];
+            let LAST_ROWS = null;
+
+            const LANG_COLORS = { TR: "", EN: "", DE: "", RU: "" };
+
+            function applyColors() {
+                LANG_COLORS.TR = document.getElementById("colorTR")?.value || "";
+                LANG_COLORS.EN = document.getElementById("colorEN")?.value || "";
+                LANG_COLORS.DE = document.getElementById("colorDE")?.value || "";
+                LANG_COLORS.RU = document.getElementById("colorRU")?.value || "";
+                if (LAST_ROWS) renderPages(LAST_ROWS);
+            }
+
+            function resetAllColors() {
+                LANG_COLORS.TR = LANG_COLORS.EN = LANG_COLORS.DE = LANG_COLORS.RU = "";
+                ["colorTR", "colorEN", "colorDE", "colorRU"].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = "#000000";
+                });
+                if (LAST_ROWS) renderPages(LAST_ROWS);
+            }
+
+            /* ================= EXCEL ================= */
+            function loadExcel(e) {
+                const reader = new FileReader();
+                reader.onload = evt => {
+                    const wb = XLSX.read(evt.target.result, { type: "array" });
+                    const sheet = wb.Sheets[wb.SheetNames[0]];
+                    DATA = XLSX.utils.sheet_to_json(sheet);
+                    document.getElementById("status").innerText = "Excel yüklendi";
+                };
+                reader.readAsArrayBuffer(e.target.files[0]);
+            }
+
+            /* ================= ID ================= */
+            function addId() {
+                const input = document.getElementById("idInput");
+                if (!input.value.trim()) return;
+                selectedIds.push(input.value.trim());
+                input.value = "";
+                renderIdList();
+            }
+
+            function removeId(i) {
+                selectedIds.splice(i, 1);
+                renderIdList();
+            }
+
+            function renderIdList() {
+                const box = document.getElementById("idList");
+                box.innerHTML = "";
+                selectedIds.forEach((id, i) => {
+                    box.innerHTML += `
+                <div class="flex items-center bg-gray-100 border px-2 py-1">
+                    <span class="mr-2">${id}</span>
+                    <button onclick="removeId(${i})" class="text-red-600 font-bold">×</button>
+                </div>`;
+                });
+            }
+
+            /* ================= ÇIKTI ================= */
+            function generateOutput() {
+                if (!DATA.length) return alert("Excel yüklenmedi");
+                applyColors();
+
+                const rows = selectedIds.length
+                    ? selectedIds.map(id => DATA.find(r => String(r.ID) === String(id))).filter(Boolean)
+                    : DATA;
+
+                LAST_ROWS = rows;
+                renderPages(rows);
+
+                setTimeout(() => window.print(), 300);
+            }
+
+            /* ================= SAYFA ================= */
+            function renderPages(rows) {
+                const output = document.getElementById("output");
+                output.innerHTML = "";
+
+                for (let i = 0; i < rows.length; i += 8) {
+                    const page = document.createElement("div");
+                    page.className = "page w-[210mm] h-[297mm] bg-white mx-auto p-[8mm] grid grid-cols-2 grid-rows-4 gap-[8px]";
+                    const chunk = rows.slice(i, i + 8);
+                    chunk.forEach(r => page.innerHTML += card(r));
+                    for (let j = chunk.length; j < 8; j++) page.innerHTML += "<div></div>";
+                    output.appendChild(page);
+                }
+
+                // Taşan kartlarda fontu küçült
+                requestAnimationFrame(() => {
+                    document.querySelectorAll(".card").forEach(c => fitCard(c));
+                });
+            }
+
+            /* ================= ALERJEN ================= */
+            const ALLERGENS = [
+                { key: "GLUTEN", label: "Gluten", src: "IMAGES/GLUTEN.png" },
+                { key: "MILK", label: "Süt", src: "IMAGES/MILK.png" },
+                { key: "EGG", label: "Yumurta", src: "IMAGES/EGG.png" },
+                { key: "FISH", label: "Balık", src: "IMAGES/FISH.png" },
+            ];
+
+            function hasAllergens(row) {
+                return ALLERGENS.some(a => String(row[a.key]) === "1");
+            }
+
+            function allergenIcons(row) {
+                return ALLERGENS
+                    .filter(a => String(row[a.key]) === "1")
+                    .map(a => `<img class="allergen" src="${a.src}" alt="${a.label}" title="${a.label}">`)
+                    .join("");
+            }
+
+            /* ================= FONT SIĞDIRMA ================= */
+            function fitCard(cardEl) {
+                const area = cardEl.querySelector(".lang-area");
+                if (!area || area.clientHeight === 0) return;
+
+                const texts = cardEl.querySelectorAll(".lang-text");
+                if (!texts.length) return;
+
+                // Başlangıç font boyutunu sakla
+                texts.forEach(el => {
+                    if (!el.dataset.baseSize) {
+                        el.dataset.baseSize = parseFloat(getComputedStyle(el).fontSize) || 18;
+                    }
+                    el.style.fontSize = el.dataset.baseSize + "px";
+                });
+
+                const minPx = 9;
+                let guard = 0;
+
+                // Taşıyorsa küçült
+                while (area.scrollHeight > area.clientHeight + 1 && guard < 80) {
+                    let allMin = true;
+                    texts.forEach(el => {
+                        const cur = parseFloat(el.style.fontSize) || 18;
+                        if (cur > minPx) {
+                            el.style.fontSize = Math.max(minPx, cur - 0.5) + "px";
+                            allMin = false;
+                        }
+                    });
+                    if (allMin) break;
+                    guard++;
+                }
+            }
+
+            /* ================= KART ================= */
+            function card(y) {
+                const has = hasAllergens(y);
+                const icons = has ? allergenIcons(y) : "";
+
+                return `
+            <div class="card border border-black p-3 relative">
+                <div class="lang-area">
+                    ${langRow("TR", y.TR, true)}
+                    ${langRow("EN", y.EN, true)}
+                    ${langRow("DE", y.DE, true)}
+                    ${langRow("RU", y.RU, false)}
+                </div>
+
+                <div class="card-footer">
+                    <div class="flex items-center gap-1">
+                        ${icons}
+                    </div>
+                    <img class="logo" src="IMAGES/LOGO.png" alt="Logo">
+                </div>
+
+                <div class="absolute top-2 right-2 text-xs text-gray-500">
+                    ${y.ID ?? ""}
+                </div>
+            </div>`;
+            }
+
+            /* ================= DİL SATIRI ================= */
+            function langRow(lang, text, withBorder) {
+                const safeText = text ?? "";
+                const color = LANG_COLORS[lang];
+                const labelBg = color || "#000";
+                const textColor = color || "inherit";
+
+                return `
+            <div class="lang-row">
+                <div class="lang-label" style="background-color: ${labelBg};">${lang}</div>
+                <div class="lang-content ${withBorder ? 'with-border' : ''}">
+                    <span class="lang-text" style="color: ${textColor};">${safeText}</span>
+                </div>
+            </div>`;
+            }
+        </script>
+    </body>
+
+</html>
